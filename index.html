@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>YouTube Search Tool</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+* { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+body {
+  margin: 0; padding: 0;
+  background: linear-gradient(135deg, #0f0f1a 0%, #1a0f2e 40%, #2d1b4e 100%);
+  min-height: 100vh; color: #fff;
+  display: flex; flex-direction: column;
+}
+
+/* BG Decor */
+.decorative-bg { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+.decorative-bg div { position: absolute; width: 20rem; height: 20rem; border-radius: 9999px; filter: blur(3rem); opacity: 0.2; animation: pulse 4s ease-in-out infinite; }
+.bg-purple { background: #8b5cf6; top: -5rem; right: -5rem; }
+.bg-pink { background: #ec4899; bottom: -5rem; left: -5rem; }
+@keyframes pulse { 0%,100%{opacity:0.2;transform:scale(1)} 50%{opacity:0.3;transform:scale(1.1)} }
+
+/* Main Card */
+.merged-card {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-left: 4px solid #6d28d9;
+  border-radius: 1rem;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+/* Top Header */
+.top-header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 50;
+  background: rgba(15, 15, 26, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+.top-header-inner {
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: 0.55rem 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.header-spacer { height: 3rem; }
+
+/* Search Input */
+.search-wrapper { position: relative; flex: 1; }
+.search-input {
+  width: 100%; padding: 0.95rem 3.4rem 0.95rem 2.6rem;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.85rem; color: white; font-size: 0.95rem; font-weight: 500;
+  outline: none; transition: all 0.2s ease;
+}
+.search-input:focus { border-color: #8b5cf6; box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3); }
+.search-input::placeholder { color: #9ca3af; }
+.search-icon {
+  position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%);
+  color: #9ca3af; font-size: 0.9rem; z-index: 5; pointer-events: none;
+}
+.paste-btn-inside {
+  position: absolute; right: 0.38rem; top: 50%; transform: translateY(-50%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white; border: none; border-radius: 0.6rem;
+  cursor: pointer; transition: 0.2s ease;
+  width: 2.5rem; height: 2.5rem; display: flex; align-items: center;
+  justify-content: center; z-index: 10;
+}
+.paste-btn-inside:hover { opacity: 0.9; }
+.paste-btn-inside:active { transform: translateY(-50%) scale(0.92); }
+
+/* Btn */
+.save-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 0.35rem 0.7rem; border-radius: 0.45rem;
+  font-weight: 600; font-size: 0.65rem; color: white;
+  border: none; cursor: pointer; transition: all 0.2s ease;
+  display: inline-flex; align-items: center; gap: 0.2rem;
+}
+.save-btn:active { transform: scale(0.95); }
+
+.btn-teal {
+  background: rgba(38, 166, 154, 0.25);
+  color: #5eead4;
+  border: 1px solid rgba(38, 166, 154, 0.4);
+  border-radius: 0.45rem; font-weight: 600; font-size: 0.62rem;
+  cursor: pointer; padding: 0.3rem 0.55rem;
+  transition: 0.2s ease; display: inline-flex; align-items: center; gap: 0.2rem;
+}
+.btn-teal:hover { background: rgba(38, 166, 154, 0.35); }
+.btn-teal:active { transform: scale(0.95); }
+
+.btn-orange {
+  background: rgba(249, 115, 22, 0.25);
+  color: #fdba74;
+  border: 1px solid rgba(249, 115, 22, 0.4);
+  border-radius: 0.45rem; font-weight: 700; font-size: 0.65rem;
+  cursor: pointer; padding: 0.3rem 0.6rem;
+  transition: 0.2s ease; display: inline-flex; align-items: center; justify-content: center;
+}
+.btn-orange:hover { background: rgba(249, 115, 22, 0.35); }
+.btn-orange:active { transform: scale(0.95); }
+
+.header-mini-btn {
+  display: flex; align-items: center; gap: 0.2rem;
+  padding: 0.3rem 0.5rem; border-radius: 0.45rem;
+  font-size: 0.62rem; font-weight: 700;
+  border: none; cursor: pointer; transition: 0.2s ease; white-space: nowrap;
+}
+.header-mini-btn:active { transform: scale(0.94); }
+.btn-mini-pay {
+  background: rgba(38, 166, 154, 0.25); color: #5eead4;
+  border: 1px solid rgba(38, 166, 154, 0.4);
+}
+.btn-mini-pay:hover { background: rgba(38, 166, 154, 0.35); }
+.btn-mini-task {
+  background: rgba(249, 115, 22, 0.25); color: #fdba74;
+  border: 1px solid rgba(249, 115, 22, 0.4);
+}
+.btn-mini-task:hover { background: rgba(249, 115, 22, 0.35); }
+
+/* Query Tag */
+.top-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.5rem;
+  margin-bottom: 0.28rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #c4b5fd;
+  text-align: left;
+  line-height: 1.2;
+  overflow: hidden;
+}
+.top-tag:last-child { margin-bottom: 0; }
+.top-tag:hover {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #ddd6fe;
+}
+.top-tag:active { transform: scale(0.98); }
+.top-tag .tag-icon {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  opacity: 0.75;
+}
+.top-tag .tag-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.top-tag .tag-count {
+  flex-shrink: 0;
+  background: rgba(139, 92, 246, 0.3);
+  color: #ddd6fe;
+  border-radius: 1rem;
+  padding: 0.08rem 0.4rem;
+  font-size: 0.6rem;
+  font-weight: 700;
+  min-width: 1.2rem;
+  text-align: center;
+}
+.top-tag.recent-latest {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #ddd6fe;
+}
+.top-tag.recent-latest .tag-icon { color: #fbbf24; opacity: 1; }
+
+/* iOS Badge */
+.ios-badge {
+  display: none; align-items: center; justify-content: center;
+  width: 1.2rem; height: 1.2rem; border-radius: 50%;
+  background: linear-gradient(135deg, #000, #333);
+  color: white; font-size: 0.65rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  animation: iosBadgeIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  margin-right: 0.15rem; flex-shrink: 0;
+}
+.ios-badge.visible { display: flex; }
+@keyframes iosBadgeIn {
+  0% { opacity: 0; transform: scale(0) rotate(-180deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+/* Ad Container */
+.ad-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0 0 0.7rem 0;
+  width: 100%;
+  min-height: 60px;
+  overflow: hidden;
+}
+.ad-container-inner {
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 0.5rem;
+}
+.ad-container-bottom {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0.7rem 0 0 0;
+  width: 100%;
+  min-height: 90px;
+  overflow: hidden;
+}
+.ad-container-bottom-inner {
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 0.5rem;
+}
+
+/* Marquee */
+.marquee-wrap {
+  background: linear-gradient(90deg, rgba(236, 72, 153, 0.25), rgba(139, 92, 246, 0.3), rgba(236, 72, 153, 0.25));
+  border: 1px solid rgba(236, 72, 153, 0.5);
+  border-radius: 0.45rem;
+  overflow: hidden;
+  margin: 0 0 0.65rem 0;
+  padding: 0.25rem 0;
+  position: relative;
+  box-shadow: 0 0 12px rgba(236, 72, 153, 0.35), 0 4px 16px rgba(139, 92, 246, 0.2);
+  animation: marqueeGlow 2.5s ease-in-out infinite;
+}
+@keyframes marqueeGlow {
+  0%, 100% { box-shadow: 0 0 12px rgba(236, 72, 153, 0.35), 0 4px 16px rgba(139, 92, 246, 0.2); }
+  50% { box-shadow: 0 0 20px rgba(236, 72, 153, 0.6), 0 4px 20px rgba(139, 92, 246, 0.35); }
+}
+.marquee-wrap::before,
+.marquee-wrap::after {
+  content: '';
+  position: absolute; top: 0; bottom: 0; width: 1rem;
+  z-index: 2; pointer-events: none;
+}
+.marquee-wrap::before { left: 0; background: linear-gradient(90deg, rgba(20,15,35,0.95), transparent); }
+.marquee-wrap::after { right: 0; background: linear-gradient(270deg, rgba(20,15,35,0.95), transparent); }
+.marquee {
+  display: inline-block;
+  white-space: nowrap;
+  padding-left: 100%;
+  animation: marqueeScroll 30s linear infinite;
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: #fef08a;
+  letter-spacing: 0.2px;
+  text-shadow: 0 0 6px rgba(254, 240, 138, 0.5);
+}
+.marquee i { color: #fbbf24; margin: 0 0.25rem; }
+@keyframes marqueeScroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
+/* Redirect Screen */
+.redirect-screen {
+  display: none;
+  padding: 1.1rem 0.9rem;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-left: 4px solid #6d28d9;
+  border-radius: 1rem;
+  text-align: center;
+  animation: fadeSlideUp 0.3s ease-out;
+}
+.redirect-screen.active { display: block; }
+.redirect-screen .rs-icon {
+  width: 2.2rem; height: 2.2rem;
+  margin: 0 auto 0.5rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem;
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+  animation: rsPulse 1.5s ease-in-out infinite;
+}
+@keyframes rsPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(139, 92, 246, 0.5); }
+  50% { transform: scale(1.08); box-shadow: 0 0 32px rgba(139, 92, 246, 0.8); }
+}
+.rs-line {
+  font-size: 0.75rem;
+  margin: 0.25rem 0;
+  color: #e9d5ff;
+  font-weight: 600;
+}
+.rs-line span { color: #fbbf24; font-weight: 700; }
+.rs-tag {
+  display: inline-block;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  border-radius: 0.45rem;
+  padding: 0.2rem 0.55rem;
+  margin: 0.25rem 0;
+  font-size: 0.72rem;
+  word-break: break-word;
+  max-width: 100%;
+  color: #ddd6fe;
+}
+.rs-redirect {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: linear-gradient(90deg, #c4b5fd, #f472b6, #c4b5fd);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradientMove 2s linear infinite;
+}
+@keyframes gradientMove {
+  0% { background-position: 0% center; }
+  100% { background-position: 200% center; }
+}
+.rs-dots::after {
+  content: '';
+  animation: dots 1.4s steps(4, end) infinite;
+}
+@keyframes dots {
+  0% { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
+  100% { content: ''; }
+}
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 1.2rem; left: 50%; transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid #8b5cf6;
+  color: white; padding: 0.55rem 0.9rem; border-radius: 0.65rem;
+  z-index: 999; font-size: 0.75rem; display: none;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  align-items: center; gap: 0.3rem;
+}
+.toast.visible { display: flex; }
+
+/* Spinner */
+.spinner {
+  display: inline-block; width: 0.8rem; height: 0.8rem;
+  border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
+  border-radius: 50%; animation: spin 0.6s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Popup */
+.popup-overlay {
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.popup-card {
+  background: rgba(20, 15, 35, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 1rem;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+}
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fadeSlideUp 0.3s ease-out; }
+
+/* Guideline */
+.guideline {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem;
+}
+.guideline strong { color: #c4b5fd; }
+.guideline p { color: #d1d5db; }
+
+/* Channel Link */
+.channel-link {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #c4b5fd; border-radius: 0.75rem;
+  transition: 0.2s ease;
+}
+.channel-link:hover {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #ddd6fe;
+}
+
+/* Divider */
+.section-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.4), transparent);
+  margin: 0.7rem 0;
+}
+
+/* Main Content */
+.main-content { flex: 1 0 auto; }
+
+/* Footer */
+.contact-footer {
+  text-align: center;
+  padding: 0.5rem 1rem 0.8rem 1rem;
+  font-size: 0.72rem;
+  flex-shrink: 0;
+}
+.contact-footer button {
+  color: white; text-decoration: none; font-weight: 600;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  padding: 0.45rem 0.9rem; border-radius: 2rem;
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  transition: all 0.25s; backdrop-filter: blur(10px);
+  cursor: pointer; font-family: inherit; font-size: 0.72rem;
+}
+.contact-footer button:hover {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.4);
+  transform: translateY(-2px);
+}
+.contact-footer button:active { transform: translateY(0) scale(0.96); }
+
+/* Contact Form */
+.contact-form label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #c4b5fd;
+  margin-bottom: 0.35rem;
+}
+.contact-form textarea {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.65rem;
+  color: white;
+  font-size: 0.8rem;
+  padding: 0.65rem;
+  outline: none;
+  transition: all 0.2s ease;
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+}
+.contact-form textarea:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+}
+.contact-form textarea::placeholder { color: #6b7280; }
+.contact-send-btn {
+  width: 100%;
+  padding: 0.65rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 0.65rem;
+  font-weight: 700;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.35);
+}
+.contact-send-btn:hover { opacity: 0.95; }
+.contact-send-btn:active { transform: scale(0.97); }
+</style>
+</head>
+<body class="antialiased">
+
+<!-- BG Decor -->
+<div class="decorative-bg">
+  <div class="bg-purple"></div>
+  <div class="bg-pink"></div>
+</div>
+
+<!-- Top Header -->
+<header id="amittgHeader" class="top-header">
+  <div class="top-header-inner">
+    <div class="font-bold text-sm flex items-center gap-1">
+      <span id="iosBadge" class="ios-badge"><i class="bi bi-apple"></i></span>
+      <span>🔮</span>
+      <span class="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">RADHE RADHE</span>
+    </div>
+    <div class="flex items-center gap-1">
+      <button id="paymentBtn" class="header-mini-btn btn-mini-pay">
+        <i class="bi bi-wallet2"></i> Pay
+      </button>
+      <button id="taskBtn" class="header-mini-btn btn-mini-task">
+        <i class="bi bi-kanban"></i> Task
+      </button>
+      <button id="filterToggle" class="btn-orange" style="min-width:2.1rem;">
+        <span id="filterLabel">1H</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="header-spacer"></div>
+
+<div class="relative z-10 max-w-md mx-auto px-3 pb-3 w-full main-content">
+
+  <!-- Ad (Top - 468x60) -->
+  <div class="ad-container">
+    <div class="ad-container-inner">
+      <script>
+        atOptions = {
+          'key' : '0af5c03070a330aa464bdfc06045ae7d',
+          'format' : 'iframe',
+          'height' : 60,
+          'width' : 468,
+          'params' : {}
+        };
+      </script>
+      <script src="https://www.highrevenueformat.com/0af5c03070a330aa464bdfc06045ae7d/invoke.js"></script>
+    </div>
+  </div>
+
+  <!-- Marquee -->
+  <div class="marquee-wrap">
+    <div class="marquee">
+      <i class="bi bi-exclamation-triangle-fill"></i>
+      Agar Kisi post me Likha hua hai Today Filter Ya search Tool link nahi diya gaya hai to Direct YouTube Application Per jakar Search kijiye Bina Permission search Tool Ka use Karne Per Restriction Lagaya ja Sakta Hai
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      <i class="bi bi-exclamation-triangle-fill"></i>
+      Agar Kisi post me Likha hua hai Today Filter Ya search Tool link nahi diya gaya hai to Direct YouTube Application Per jakar Search kijiye Bina Permission search Tool Ka use Karne Per Restriction Lagaya ja Sakta Hai
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    </div>
+  </div>
+
+  <!-- Main Card -->
+  <div id="mainCard" class="merged-card p-3">
+    <div class="flex items-center justify-between mb-2">
+      <div class="flex items-center gap-1.5">
+        <span class="text-[9px] font-bold uppercase tracking-wide text-purple-300">Instant search</span>
+        <span class="save-btn text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+          <i class="bi bi-search"></i> <span id="searchCount">0</span>
+        </span>
+      </div>
+      <button id="guidelinesBtn" class="btn-teal">
+        <i class="bi bi-list-check"></i> Guidelines
+      </button>
+    </div>
+    <div class="search-wrapper">
+      <i class="bi bi-search search-icon"></i>
+      <input type="text" id="searchBox" class="search-input" placeholder="Search here...">
+      <button id="pasteBtn" class="paste-btn-inside">
+        <i class="bi bi-clipboard" id="pasteIcon" style="font-size:1rem;"></i>
+        <div class="spinner hidden" id="spinner"></div>
+      </button>
+    </div>
+
+    <div class="section-divider"></div>
+
+    <div class="text-[9px] font-bold uppercase tracking-wide text-purple-300 mb-2">
+      <i class="bi bi-clock-history text-teal-300"></i> Recent Queries
+    </div>
+    <div id="topSearchesContainer" class="flex flex-col"></div>
+  </div>
+
+  <!-- Ad (Below Search Card - 728x90) -->
+  <div class="ad-container-bottom">
+    <div class="ad-container-bottom-inner">
+      <script>
+        atOptions = {
+          'key' : '76fe3c83fbd47f9a45c36f4b849f4f94',
+          'format' : 'iframe',
+          'height' : 90,
+          'width' : 728,
+          'params' : {}
+        };
+      </script>
+      <script src="https://www.highrevenueformat.com/76fe3c83fbd47f9a45c36f4b849f4f94/invoke.js"></script>
+    </div>
+  </div>
+
+  <!-- Redirect Screen -->
+  <div id="redirectScreen" class="redirect-screen">
+    <div class="rs-icon">
+      <i class="bi bi-youtube text-white"></i>
+    </div>
+    <p class="rs-line">Search Tag:-</p>
+    <div class="rs-tag" id="rsTag">—</div>
+    <p class="rs-line">Mode:- <span id="rsMode">1H</span></p>
+    <p class="rs-redirect">Redirect Shortly<span class="rs-dots"></span></p>
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="contact-footer relative z-10">
+  <button id="contactBtn" type="button">
+    <i class="bi bi-telegram"></i> Facing Any Issue in Website? Contact Me
+  </button>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">
+  <i class="bi bi-info-circle text-purple-400"></i>
+  <span id="toastMessage">Ready</span>
+</div>
+
+<script>
+(function(){
+  const searchBox=document.getElementById('searchBox');
+  const pasteBtn=document.getElementById('pasteBtn');
+  const pasteIcon=document.getElementById('pasteIcon');
+  const spinner=document.getElementById('spinner');
+  const searchCount=document.getElementById('searchCount');
+  const toast=document.getElementById('toast');
+  const toastMsg=document.getElementById('toastMessage');
+  const guidelinesBtn=document.getElementById('guidelinesBtn');
+  const paymentBtn=document.getElementById('paymentBtn');
+  const taskBtn=document.getElementById('taskBtn');
+  const topSearchesContainer=document.getElementById('topSearchesContainer');
+  const amittgHeader=document.getElementById('amittgHeader');
+  const filterToggle=document.getElementById('filterToggle');
+  const filterLabel=document.getElementById('filterLabel');
+  const iosBadge=document.getElementById('iosBadge');
+  const contactBtn=document.getElementById('contactBtn');
+
+  const mainCard=document.getElementById('mainCard');
+  const redirectScreen=document.getElementById('redirectScreen');
+  const rsTag=document.getElementById('rsTag');
+  const rsMode=document.getElementById('rsMode');
+
+  function detectIOS() {
+    const ua = navigator.userAgent || navigator.vendor || window.opera;
+    const isIPhone = /iPhone/.test(ua);
+    const isIPad = /iPad/.test(ua);
+    const isIPadModern = /Macintosh/.test(ua) && 'ontouchend' in document;
+    const isPlatformIOS = /iPad|iPhone|iPod/.test(navigator.platform || '');
+    return isIPhone || isIPad || isIPadModern || isPlatformIOS;
+  }
+
+  const isIOS = detectIOS();
+  if (isIOS) iosBadge.classList.add('visible');
+
+  let currentFilter = 'hour';
+  const filters = { hour: 'EgIIAQ%3D%3D', day: 'EgIIAg%3D%3D' };
+  let redirecting=false;
+  let newTabEnabled=localStorage.getItem('yt_newtab')!=='off';
+  let headerTapCount=0, headerTapTimer=null;
+
+  function buildBrowserUrl(q){
+    const t=q.trim();
+    if(!t)return null;
+    return `https://www.youtube.com/results?search_query=${encodeURIComponent(t)}&sp=${filters[currentFilter]}`;
+  }
+  function buildIOSAppUrl(q){
+    const t=q.trim();
+    if(!t)return null;
+    return `youtube://www.youtube.com/results?search_query=${encodeURIComponent(t)}&sp=${filters[currentFilter]}`;
+  }
+
+  const paymentChannels = [
+    { name: 'Earning X Lifafa', url: 'https://t.me/EarningXLifafa' }
+  ];
+  const taskChannels = [
+    { name: 'Munna Bhaiya Giveaways', url: 'https://t.me/Munna_Bhaiya_Giveaways' },
+    { name: 'Jalebi Fafda Giveaways', url: 'https://t.me/Jalebi_Fafda_Giveaways' },
+    { name: 'Video Trade', url: 'https://t.me/VideoTrade01' },
+    { name: 'Earning Giveaway', url: 'https://t.me/Earning_Giveaway1' },
+    { name: 'Giveway Time', url: 'https://t.me/Giveway_Time' },
+    { name: 'Make Money', url: 'https://t.me/MAKINGMONEYP' },
+    { name: 'Fast Pays', url: 'https://t.me/Fastpayys' }
+  ];
+
+  filterToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (currentFilter === 'hour') {
+      currentFilter = 'day';
+      filterLabel.textContent = '24H';
+      showToast('Filter: Today (24H)');
+    } else {
+      currentFilter = 'hour';
+      filterLabel.textContent = '1H';
+      showToast('Filter: Last Hour (1H)');
+    }
+  });
+
+  amittgHeader.addEventListener('click',(e)=>{
+    if(e.target.closest('#filterToggle') || e.target.closest('#paymentBtn') || e.target.closest('#taskBtn')) return;
+    if(isIOS) return;
+    headerTapCount++;
+    clearTimeout(headerTapTimer);
+    headerTapTimer=setTimeout(()=>{headerTapCount=0;},500);
+    if(headerTapCount===3){
+      newTabEnabled=!newTabEnabled;
+      localStorage.setItem('yt_newtab',newTabEnabled?'on':'off');
+      showToast(newTabEnabled?'New tab ON':'New tab OFF');
+      headerTapCount=0;
+    }
+  });
+
+  function showToast(m){
+    toastMsg.textContent=m||'Ready';
+    toast.classList.add('visible');
+    setTimeout(()=>toast.classList.remove('visible'),2500);
+  }
+
+  // Recent Queries: 1st latest + top 4 most used
+  function getLatestQuery(){ return localStorage.getItem('yt_latest_query') || ''; }
+  function setLatestQuery(term){ localStorage.setItem('yt_latest_query', term); }
+
+  function getUsageStats(){
+    try{return JSON.parse(localStorage.getItem('yt_usage_stats'))||{}}catch(e){return{}}
+  }
+  function saveUsageStats(stats){
+    localStorage.setItem('yt_usage_stats',JSON.stringify(stats));
+  }
+  function incrementUsage(term){
+    if(!term||term.trim().length<3)return;
+    const key=term.trim().toLowerCase();
+    const stats=getUsageStats();
+    stats[key]=(stats[key]||0)+1;
+    saveUsageStats(stats);
+  }
+  function addRecentQuery(term){
+    if(!term||term.trim().length<3)return;
+    setLatestQuery(term.trim());
+    incrementUsage(term.trim());
+    renderRecentQueries();
+  }
+
+  function getOriginalTerm(lowerKey){
+    try{
+      const map = JSON.parse(localStorage.getItem('yt_term_case_map'))||{};
+      return map[lowerKey] || lowerKey;
+    }catch(e){ return lowerKey; }
+  }
+  function saveOriginalTerm(term){
+    try{
+      const map = JSON.parse(localStorage.getItem('yt_term_case_map'))||{};
+      map[term.toLowerCase()] = term;
+      localStorage.setItem('yt_term_case_map', JSON.stringify(map));
+    }catch(e){}
+  }
+
+  function renderRecentQueries(){
+    const latest = getLatestQuery();
+    const stats = getUsageStats();
+    
+    let entries = Object.entries(stats);
+    if(latest){
+      const latestKey = latest.toLowerCase();
+      entries = entries.filter(([k]) => k !== latestKey);
+    }
+    
+    const top4 = entries.sort((a,b)=>b[1]-a[1]).slice(0,4);
+    
+    const items = [];
+    if(latest){
+      items.push({ 
+        term: latest, 
+        count: stats[latest.toLowerCase()] || 1, 
+        isLatest: true 
+      });
+    }
+    top4.forEach(([term, count]) => {
+      items.push({ 
+        term: getOriginalTerm(term), 
+        count, 
+        isLatest: false 
+      });
+    });
+    
+    if(items.length === 0){
+      topSearchesContainer.innerHTML='';
+      return;
+    }
+    
+    topSearchesContainer.innerHTML = items.map(item => {
+      const displayTerm = item.term.length > 40 ? item.term.substring(0,40)+'…' : item.term;
+      const iconClass = item.isLatest ? 'bi-clock-fill' : 'bi-fire';
+      const cls = item.isLatest ? 'top-tag recent-latest' : 'top-tag';
+      return `<button class="${cls}" data-term="${item.term.replace(/"/g,'&quot;')}">
+        <i class="bi ${iconClass} tag-icon"></i>
+        <span class="tag-text">${displayTerm}</span>
+        <span class="tag-count">${item.count}</span>
+      </button>`;
+    }).join('');
+    
+    document.querySelectorAll('.top-tag').forEach(tag=>{
+      tag.addEventListener('click',(e)=>{
+        const term=e.currentTarget.getAttribute('data-term');
+        if(term){forceRedirect(term);}
+      });
+    });
+  }
+
+  function getData(){return JSON.parse(localStorage.getItem('yt_search_count'))||{count:0,last:null}}
+  function saveData(d){localStorage.setItem('yt_search_count',JSON.stringify(d))}
+  function resetCheck(){const m=new Date().setHours(0,0,0,0);let d=getData();if(d.last!==m){d={count:0,last:m};saveData(d)}}
+  function loadCount(){resetCheck();searchCount.textContent=getData().count}
+  function incCount(){resetCheck();let d=getData();d.count++;saveData(d);searchCount.textContent=d.count}
+
+  function showLoading() {
+    pasteIcon.classList.add('hidden');
+    spinner.classList.remove('hidden');
+    pasteBtn.classList.add('opacity-70');
+  }
+  function hideLoading() {
+    pasteIcon.classList.remove('hidden');
+    spinner.classList.add('hidden');
+    pasteBtn.classList.remove('opacity-70');
+  }
+
+  function showRedirectScreen(term){
+    mainCard.style.display='none';
+    rsTag.textContent = term;
+    rsMode.textContent = currentFilter === 'hour' ? '1H' : '24H';
+    redirectScreen.classList.add('active');
+  }
+  function hideRedirectScreen(){
+    redirectScreen.classList.remove('active');
+    mainCard.style.display='';
+    searchBox.value='';
+    hideLoading();
+  }
+
+  function forceRedirect(term){
+    if(redirecting)return;
+    const trimmed=term.trim();
+    if(trimmed.length<3)return;
+    redirecting=true;
+    showLoading();
+
+    incCount();
+    saveOriginalTerm(trimmed);
+    addRecentQuery(trimmed);
+    showRedirectScreen(trimmed);
+
+    if (isIOS) {
+      const appUrl = buildIOSAppUrl(trimmed);
+      const browserUrl = buildBrowserUrl(trimmed);
+      const startTime = Date.now();
+      window.location.href = appUrl;
+      setTimeout(() => {
+        if (!document.hidden && Date.now() - startTime < 2000) {
+          window.location.href = browserUrl;
+        }
+        setTimeout(()=>{redirecting=false;},800);
+      }, 1500);
+    } else {
+      const url = buildBrowserUrl(trimmed);
+      if(!url){redirecting=false;hideRedirectScreen();showToast('Invalid search');return;}
+      setTimeout(()=>{
+        if(newTabEnabled){window.open(url,'_blank');}else{window.location.href=url;}
+        setTimeout(()=>{redirecting=false;},800);
+      },1200);
+    }
+  }
+
+  searchBox.addEventListener('input',e=>{
+    const v=e.target.value.trim();
+    if(v.length>=3)forceRedirect(v);
+  });
+
+  pasteBtn.addEventListener('click',async()=>{
+    try{
+      const t=await navigator.clipboard.readText();
+      if(t&&t.trim()){
+        if(t.trim().length>=3)forceRedirect(t.trim());
+        else {searchBox.value=t.trim();showToast('Min 3 chars');}
+      }
+      else showToast('Clipboard empty');
+    }catch{showToast('Clipboard denied')}
+  });
+
+  function showPopup(title,content){
+    const overlay=document.createElement('div');
+    overlay.className='fixed inset-0 z-[100] hidden items-center justify-center popup-overlay';
+    overlay.innerHTML=`<div class="popup-card rounded-2xl p-5 w-[92%] max-w-sm animate-fade-up max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-base font-bold text-purple-300">${title}</h3>
+        <button class="close-btn text-gray-400 hover:text-red-400"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="popup-body">${content}</div>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.classList.remove('hidden');
+    overlay.classList.add('flex');
+    overlay.querySelector('.close-btn').addEventListener('click',()=>overlay.remove());
+    overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()});
+    return overlay;
+  }
+
+  guidelinesBtn.addEventListener('click',()=>{
+    const content=`
+      <div class="guideline p-3 mb-2"><strong class="text-xs"><i class="bi bi-1-circle-fill text-purple-400"></i> Recording Start</strong><p class="text-xs mt-1">Video recording creator ke main Telegram channel se hi start karna hai. Pehle Post Dhunhdna hai channel per fir Thumbnail download krke Recoding Start karna hai.</p></div>
+      <div class="guideline p-3 mb-2"><strong class="text-xs"><i class="bi bi-2-circle-fill text-purple-400"></i> Exact Search Query</strong><p class="text-xs mt-1">Jo search key diya gaya hai, wahi search karna hai — exactly same keywords.</p></div>
+      <div class="guideline p-3 mb-2"><strong class="text-xs"><i class="bi bi-3-circle-fill text-purple-400"></i> Like with Delay</strong><p class="text-xs mt-1">Video ko like karna hai, lekin turant nahi, 30 seconds baad karna hai.</p></div>
+      <div class="guideline p-3 mb-2"><strong class="text-xs"><i class="bi bi-4-circle-fill text-purple-400"></i> Comments (Max 2)</strong><p class="text-xs mt-1">Genuine comments — maximum do (2) comment karne hain.</p></div>
+      <div class="guideline p-3 mb-2"><strong class="text-xs"><i class="bi bi-5-circle-fill text-purple-400"></i> Full Watch + Submit</strong><p class="text-xs mt-1">Poori video watch karein aur complete recording bot pe apne number ke saath bhejna hai.</p></div>
+      <p class="text-xs text-orange-300 text-center mt-2">⚠️ Saare steps follow karna hai. Sahi info aur recording ke bina verification nahi hoga.</p>
+    `;
+    showPopup('📌 Task Guidelines',content);
+  });
+
+  paymentBtn.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    const content=paymentChannels.map(ch=>`
+      <a href="${ch.url}" target="_blank" class="channel-link flex items-center justify-between p-3 mb-2 no-underline">
+        <span class="text-sm"><i class="bi bi-telegram text-blue-400 mr-2"></i>${ch.name}</span>
+        <i class="bi bi-arrow-up-right text-purple-400"></i>
+      </a>`).join('');
+    showPopup('💳 Payments',content);
+  });
+
+  taskBtn.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    const content=taskChannels.map(ch=>`
+      <a href="${ch.url}" target="_blank" class="channel-link flex items-center justify-between p-3 mb-2 no-underline">
+        <span class="text-sm"><i class="bi bi-telegram text-blue-400 mr-2"></i>${ch.name}</span>
+        <i class="bi bi-chevron-right text-purple-400"></i>
+      </a>`).join('');
+    showPopup('📋 Task',content);
+  });
+
+  // Contact Form
+  contactBtn.addEventListener('click',()=>{
+    const content=`
+      <div class="contact-form">
+        <label for="problemText"><i class="bi bi-chat-left-text text-purple-400"></i> Write Your Problem</label>
+        <textarea id="problemText" placeholder="Type your problem here... (min 3 characters)"></textarea>
+        <button id="sendProblemBtn" class="contact-send-btn" type="button">
+          <i class="bi bi-send-fill"></i> Send to @AmitTG
+        </button>
+        <p class="text-xs text-gray-400 mt-2 text-center">
+          <i class="bi bi-info-circle"></i> You'll be redirected to Telegram DM
+        </p>
+      </div>
+    `;
+    const overlay = showPopup('💬 Contact @AmitTG', content);
+    const sendBtn = overlay.querySelector('#sendProblemBtn');
+    const textarea = overlay.querySelector('#problemText');
+    setTimeout(()=>textarea.focus(), 100);
+
+    sendBtn.addEventListener('click', ()=>{
+      const problem = textarea.value.trim();
+      if(problem.length < 3){
+        showToast('❌ Please write at least 3 characters');
+        textarea.focus();
+        return;
+      }
+      const tgUrl = `https://t.me/amittg?text=${encodeURIComponent(problem)}`;
+      window.open(tgUrl, '_blank');
+      showToast('✅ Opening Telegram...');
+      setTimeout(()=>overlay.remove(), 800);
+    });
+
+    textarea.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){
+        sendBtn.click();
+      }
+    });
+  });
+
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden){
+      redirecting=false;
+      hideRedirectScreen();
+      loadCount();
+      renderRecentQueries();
+    }
+  });
+
+  currentFilter = 'hour';
+  filterLabel.textContent = '1H';
+  loadCount();
+  renderRecentQueries();
+})();
+</script>
+</body>
+</html>
