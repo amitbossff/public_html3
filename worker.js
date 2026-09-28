@@ -5,9 +5,7 @@ const GROQ_MODEL = 'openai/gpt-oss-120b';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MAX_TOKENS = 3000;
 const COMMENTS_PER_CALL = 30;
-
-// Admin password (isko change karo)
-const ADMIN_PASSWORD = 'amittg_admin_2024';
+const ADMIN_PASSWORD = 'amittg';
 
 const KEYWORDS = [
   'earning apps',
@@ -38,59 +36,181 @@ export default {
       return;
     }
 
-    ctx.waitUntil(processBatch(env));
+    ctx.waitUntil(processBatch(env, event.cron));
   },
 
   async fetch(request, env) {
     const url = new URL(request.url);
     const action = url.searchParams.get('action');
 
-    // CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Pass'
+          'Access-Control-Allow-Headers': 'Content-Type'
         }
       });
     }
 
-    // Admin password check (agar admin action hai)
-    const adminActions = ['keys-list', 'key-add', 'key-delete', 'keys-status', 'reset'];
+    const adminActions = ['keys-list', 'key-add', 'key-delete', 'keys-status', 'reset', 'logs'];
     if (adminActions.includes(action)) {
-      const pass = url.searchParams.get('pass') || request.headers.get('X-Admin-Pass');
+      const pass = url.searchParams.get('pass');
       if (pass !== ADMIN_PASSWORD) {
         return jsonResponse({ error: 'Unauthorized' }, 403);
       }
     }
 
     switch (action) {
-      case 'reset':
-        return jsonResponse(await resetFlags(env));
-      case 'keys-status':
-        return jsonResponse(await getKeysStatus(env));
-      case 'keys-list':
-        return jsonResponse(await listKeys(env));
-      case 'key-add':
-        return jsonResponse(await addKey(request, env));
-      case 'key-delete':
-        return jsonResponse(await deleteKey(request, env));
-      case 'status':
-        return jsonResponse(await getStatus(env));
-      default:
-        return jsonResponse(await processBatch(env));
+      case 'reset': return jsonResponse(await resetFlags(env));
+      case 'keys-status': return jsonResponse(await getKeysStatus(env));
+      case 'keys-list': return jsonResponse(await listKeys(env));
+      case 'key-add': return jsonResponse(await addKey(request, env));
+      case 'key-delete': return jsonResponse(await deleteKey(request, env));
+      case 'logs': return jsonResponse(await getLogs(env));
+      case 'logs-clear': return jsonResponse(await clearLogs(env));
+      case 'status': return jsonResponse(await getStatus(env));
+      default: return jsonResponse(await processBatch(env, 'manual'));
     }
   }
 };
 
 // ============================================================
-// ADMIN: LIST ALL KEYS (Values Ke Saath)
+// LOG SYSTEM
+// ============================================================
+async function addLog(env, logEntry) {
+  // Last 50 logs rakho
+  let logs = await env.API_DATA.get('cron_logs', { type: 'json' }) || [];
+
+  logs.unshift({
+    time: new Date().toISOString(),
+    ...logEntry
+  });
+
+  // Sirf 50 latest rakho
+  if (logs.length > 50) logs = logs.slice(0, 50);
+
+  await env.API_DATA.put('cron_logs', JSON.stringify(logs), {
+    expirationTtl: 604800 // 7 din
+  });
+}
+
+async function getLogs(env) {
+  const logs = await env.API_DATA.get('cron_logs', { type: 'json' }) || [];
+  return {
+    success: true,
+    total: logs.length,
+    logs
+  };
+}
+
+async function clearLogs(env) {
+  await env.API_DATA.delete('cron_logs');
+  return { success: true, message: 'Logs cleared' };
+}
+
+// ============================================================
+// PROCESS BATCH
+// ============================================================
+async function processBatch(env, cronInfo = 'unknown') {
+  const startTime = Date.now();
+  const results = {
+    success: true,
+    timestamp: new Date().toISOString(),
+    cron: cronInfo,
+    details: []
+  };
+
+  let totalAdded = 0;
+
+  const availableKeys = await getAvailableKeys(env);
+
+  if (availableKeys.length === 0) {
+    await addLog(env, {
+      cron: cronInfo,
+      status: 'error',
+      error: 'All API keys blocked',
+      duration_ms: Date.now() - startTime
+    });
+    return {
+      success: false,
+      error: 'All API keys blocked. Reset at midnight.',
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  const shuffled = [...KEYWORDS].sort(() => Math.random() - 0.5);
+  const selectedKeywords = shuffled.slice(0, 2);
+
+  for (let i = 0; i < selectedKeywords.length; i++) {
+    const keyword = selectedKeywords[i];
+    const keyName = availableKeys[i % availableKeys.length];
+
+    const apiKey = await env.API_DATA.get(`key_value_${keyName}`);
+    if (!apiKey) continue;
+
+    try {
+      const comments = await callGroq(keyword, TOPIC, apiKey);
+
+      if (comments && comments.length > 0) {
+        const saveResult = await saveToPHP(comments, TOPIC, env);
+        totalAdded += comments.length;
+
+        results.details.push({
+          topic: TOPIC,
+          keyword,
+          key: keyName,
+          generated: comments.length,
+          saved: saveResult
+        });
+      }
+    } catch (e) {
+      if (e.message.includes('429') || e.message.includes('rate_limit')) {
+        await env.API_DATA.put(`blocked_${keyName}`, 'true', { expirationTtl: 86400 });
+        await env.API_DATA.put(`blocked_at_${keyName}`, new Date().toISOString(), { expirationTtl: 86400 });
+
+        // Log: key blocked
+        await addLog(env, {
+          cron: cronInfo,
+          status: 'key_blocked',
+          key: keyName,
+          reason: 'Rate limit 429'
+        });
+      }
+
+      results.details.push({
+        topic: TOPIC,
+        keyword,
+        key: keyName,
+        error: e.message.substring(0, 200)
+      });
+    }
+
+    if (i < selectedKeywords.length - 1) await sleep(5000);
+  }
+
+  results.total_added = totalAdded;
+  results.duration_ms = Date.now() - startTime;
+
+  // Log: successful run
+  await addLog(env, {
+    cron: cronInfo,
+    status: totalAdded > 0 ? 'success' : 'no_comments',
+    keywords: selectedKeywords,
+    total_added: totalAdded,
+    duration_ms: results.duration_ms
+  });
+
+  return results;
+}
+
+// ============================================================
+// ADMIN: KEYS LIST
 // ============================================================
 async function listKeys(env) {
   const keysList = await env.API_DATA.get('keys_list', { type: 'json' }) || [];
-
   const keys = [];
+
   for (const keyName of keysList) {
     const value = await env.API_DATA.get(`key_value_${keyName}`);
     const isBlocked = await env.API_DATA.get(`blocked_${keyName}`);
@@ -99,17 +219,12 @@ async function listKeys(env) {
     keys.push({
       name: keyName,
       value: value ? maskKey(value) : null,
-      full_value: value || null,  // Admin ko dikhane ke liye
       status: isBlocked === 'true' ? 'blocked' : 'active',
       blocked_at: blockedAt || null
     });
   }
 
-  return {
-    success: true,
-    total: keys.length,
-    keys
-  };
+  return { success: true, total: keys.length, keys };
 }
 
 // ============================================================
@@ -120,38 +235,21 @@ async function addKey(request, env) {
   const name = url.searchParams.get('name');
   const value = url.searchParams.get('value');
 
-  if (!name || !value) {
-    return { error: 'name and value required' };
-  }
+  if (!name || !value) return { error: 'name and value required' };
+  if (!name.startsWith('GROQ_API_')) return { error: 'Name must start with GROQ_API_' };
+  if (!value.startsWith('gsk_')) return { error: 'Invalid Groq key format' };
 
-  if (!name.startsWith('GROQ_API_')) {
-    return { error: 'Name must start with GROQ_API_' };
-  }
-
-  if (!value.startsWith('gsk_')) {
-    return { error: 'Invalid Groq key format' };
-  }
-
-  // Keys list update karo
   let keysList = await env.API_DATA.get('keys_list', { type: 'json' }) || [];
   if (!keysList.includes(name)) {
     keysList.push(name);
     await env.API_DATA.put('keys_list', JSON.stringify(keysList));
   }
 
-  // Key value save karo
   await env.API_DATA.put(`key_value_${name}`, value);
 
-  // Secret bhi set karo (Worker env ke liye)
-  // Note: Secrets runtime mein set nahi ho sakte, sirf dashboard se
-  // Isliye hum KV mein rakh rahe hain
+  await addLog(env, { status: 'key_added', key: name });
 
-  return {
-    success: true,
-    action: 'add',
-    name,
-    message: 'Key added. Note: Worker restart ke baad KV se load hogi.'
-  };
+  return { success: true, action: 'add', name };
 }
 
 // ============================================================
@@ -160,7 +258,6 @@ async function addKey(request, env) {
 async function deleteKey(request, env) {
   const url = new URL(request.url);
   const name = url.searchParams.get('name');
-
   if (!name) return { error: 'name required' };
 
   let keysList = await env.API_DATA.get('keys_list', { type: 'json' }) || [];
@@ -171,6 +268,8 @@ async function deleteKey(request, env) {
   await env.API_DATA.delete(`blocked_${name}`);
   await env.API_DATA.delete(`blocked_at_${name}`);
 
+  await addLog(env, { status: 'key_deleted', key: name });
+
   return { success: true, action: 'delete', name };
 }
 
@@ -179,12 +278,11 @@ async function deleteKey(request, env) {
 // ============================================================
 async function getKeysStatus(env) {
   const keysList = await env.API_DATA.get('keys_list', { type: 'json' }) || [];
-
   const keys = [];
+
   for (const keyName of keysList) {
     const isBlocked = await env.API_DATA.get(`blocked_${keyName}`);
     const blockedAt = await env.API_DATA.get(`blocked_at_${keyName}`);
-
     keys.push({
       name: keyName,
       status: isBlocked === 'true' ? 'blocked' : 'active',
@@ -216,53 +314,9 @@ async function resetFlags(env) {
     deleted.push(keyName);
   }
 
+  await addLog(env, { status: 'flags_reset', count: deleted.length });
+
   return { success: true, action: 'reset', reset: deleted, timestamp: new Date().toISOString() };
-}
-
-// ============================================================
-// PROCESS BATCH
-// ============================================================
-async function processBatch(env) {
-  const results = { success: true, timestamp: new Date().toISOString(), details: [] };
-  let totalAdded = 0;
-
-  const availableKeys = await getAvailableKeys(env);
-
-  if (availableKeys.length === 0) {
-    return { success: false, error: 'All API keys blocked. Reset at midnight.', timestamp: new Date().toISOString() };
-  }
-
-  const shuffled = [...KEYWORDS].sort(() => Math.random() - 0.5);
-  const selectedKeywords = shuffled.slice(0, 2);
-
-  for (let i = 0; i < selectedKeywords.length; i++) {
-    const keyword = selectedKeywords[i];
-    const keyName = availableKeys[i % availableKeys.length];
-
-    // KV se key value lo
-    const apiKey = await env.API_DATA.get(`key_value_${keyName}`);
-    if (!apiKey) continue;
-
-    try {
-      const comments = await callGroq(keyword, TOPIC, apiKey);
-      if (comments && comments.length > 0) {
-        const saveResult = await saveToPHP(comments, TOPIC, env);
-        totalAdded += comments.length;
-        results.details.push({ topic: TOPIC, keyword, key: keyName, generated: comments.length, saved: saveResult });
-      }
-    } catch (e) {
-      if (e.message.includes('429') || e.message.includes('rate_limit')) {
-        await env.API_DATA.put(`blocked_${keyName}`, 'true', { expirationTtl: 86400 });
-        await env.API_DATA.put(`blocked_at_${keyName}`, new Date().toISOString(), { expirationTtl: 86400 });
-      }
-      results.details.push({ topic: TOPIC, keyword, key: keyName, error: e.message.substring(0, 200) });
-    }
-
-    if (i < selectedKeywords.length - 1) await sleep(5000);
-  }
-
-  results.total_added = totalAdded;
-  return results;
 }
 
 // ============================================================
@@ -274,9 +328,7 @@ async function getAvailableKeys(env) {
 
   for (const keyName of keysList) {
     const isBlocked = await env.API_DATA.get(`blocked_${keyName}`);
-    if (isBlocked !== 'true') {
-      available.push(keyName);
-    }
+    if (isBlocked !== 'true') available.push(keyName);
   }
 
   return available;
