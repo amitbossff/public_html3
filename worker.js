@@ -5,7 +5,7 @@ const GROQ_MODEL = 'openai/gpt-oss-120b';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MAX_TOKENS = 3000;
 const COMMENTS_PER_CALL = 30;
-const ADMIN_PASSWORD = 'amittg';
+const ADMIN_PASSWORD = 'amittg_admin_2024';
 
 const KEYWORDS = [
   'earning apps',
