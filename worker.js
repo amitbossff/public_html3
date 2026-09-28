@@ -1,9 +1,9 @@
 // ============================================================
 // CONFIG
 // ============================================================
-const DEFAULT_MODEL = 'openai/gpt-oss-120b';   // Default model
-const DEFAULT_MAX_TOKENS = 2000;                 // Default max_tokens
-const DEFAULT_COMMENTS_PER_CALL = 30;            // Default comments per request
+const DEFAULT_MODEL = 'openai/gpt-oss-120b';
+const DEFAULT_MAX_TOKENS = 2000;
+const DEFAULT_COMMENTS_PER_CALL = 30;
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const ADMIN_PASSWORD = 'amittg_admin_2024';
 
@@ -29,7 +29,6 @@ export default {
       return;
     }
 
-    // Baaki time = comment generate
     ctx.waitUntil(processBatch(env, event.cron));
   },
 
@@ -49,7 +48,8 @@ export default {
 
     const adminActions = [
       'keys-list', 'key-add', 'key-delete', 'keys-status', 'reset',
-      'logs', 'logs-clear', 'get-model', 'set-model', 'get-available-models'
+      'logs', 'logs-clear', 'get-model', 'set-model', 'get-available-models',
+      'key-config', 'key-config-all'
     ];
     if (adminActions.includes(action)) {
       const pass = url.searchParams.get('pass');
@@ -67,6 +67,8 @@ export default {
       case 'get-model': return jsonResponse(await getModel(env));
       case 'set-model': return jsonResponse(await setModel(request, env));
       case 'get-available-models': return jsonResponse(await getAvailableModels());
+      case 'key-config': return jsonResponse(await setKeyConfig(request, env));
+      case 'key-config-all': return jsonResponse(await setKeyConfigAll(request, env));
       case 'status': return jsonResponse(await getStatus(env));
       default: return jsonResponse(await processBatch(env, 'manual'));
     }
@@ -74,7 +76,7 @@ export default {
 };
 
 // ============================================================
-// MODEL MANAGEMENT (KV)
+// GLOBAL MODEL CONFIG (KV)
 // ============================================================
 async function getModel(env) {
   const model = await env.API_DATA.get('yt_model') || DEFAULT_MODEL;
@@ -130,6 +132,73 @@ async function getAvailableModels() {
 }
 
 // ============================================================
+// PER-KEY CONFIG
+// ============================================================
+async function setKeyConfig(request, env) {
+  const url = new URL(request.url);
+  const name = url.searchParams.get('name');
+  const model = url.searchParams.get('model');
+  const maxTokens = url.searchParams.get('max_tokens');
+  const commentsPerCall = url.searchParams.get('comments_per_call');
+
+  if (!name) return { error: 'name required' };
+
+  if (model) {
+    await env.API_DATA.put(`key_model_${name}`, model);
+  }
+  if (maxTokens) {
+    await env.API_DATA.put(`key_max_tokens_${name}`, maxTokens);
+  }
+  if (commentsPerCall) {
+    await env.API_DATA.put(`key_comments_per_call_${name}`, commentsPerCall);
+  }
+
+  await addLog(env, { status: 'key_config_updated', key: name, model, maxTokens });
+
+  return {
+    success: true,
+    action: 'key-config',
+    name,
+    model,
+    max_tokens: maxTokens,
+    comments_per_call: commentsPerCall
+  };
+}
+
+async function setKeyConfigAll(request, env) {
+  const url = new URL(request.url);
+  const model = url.searchParams.get('model');
+  const maxTokens = url.searchParams.get('max_tokens');
+  const commentsPerCall = url.searchParams.get('comments_per_call');
+
+  const keysList = await env.API_DATA.get('keys_list', { type: 'json' }) || [];
+
+  if (keysList.length === 0) {
+    return { error: 'No keys found' };
+  }
+
+  let updated = 0;
+
+  for (const keyName of keysList) {
+    if (model) await env.API_DATA.put(`key_model_${keyName}`, model);
+    if (maxTokens) await env.API_DATA.put(`key_max_tokens_${keyName}`, maxTokens);
+    if (commentsPerCall) await env.API_DATA.put(`key_comments_per_call_${keyName}`, commentsPerCall);
+    updated++;
+  }
+
+  await addLog(env, { status: 'key_config_all_updated', count: updated, model, maxTokens });
+
+  return {
+    success: true,
+    action: 'key-config-all',
+    updated,
+    model,
+    max_tokens: maxTokens,
+    comments_per_call: commentsPerCall
+  };
+}
+
+// ============================================================
 // LOGS
 // ============================================================
 async function addLog(env, logEntry) {
@@ -157,14 +226,8 @@ async function processBatch(env, cronInfo = 'unknown') {
   const results = { success: true, timestamp: new Date().toISOString(), cron: cronInfo, details: [] };
   let totalAdded = 0;
 
-  // KV se model, tokens, comments lo
-  const config = await getModel(env);
-  const model = config.model;
-  const maxTokens = config.max_tokens;
-  const commentsPerCall = config.comments_per_call;
-
-  results.model = model;
-  results.max_tokens = maxTokens;
+  // Global config
+  const globalConfig = await getModel(env);
 
   const availableKeys = await getAvailableKeys(env);
 
@@ -183,8 +246,16 @@ async function processBatch(env, cronInfo = 'unknown') {
     const apiKey = await env.API_DATA.get(`key_value_${keyName}`);
     if (!apiKey) continue;
 
+    // Per-key config (fallback to global)
+    const keyModel = await env.API_DATA.get(`key_model_${keyName}`) || globalConfig.model;
+    const keyMaxTokens = parseInt(await env.API_DATA.get(`key_max_tokens_${keyName}`) || globalConfig.max_tokens);
+    const keyCommentsPerCall = parseInt(await env.API_DATA.get(`key_comments_per_call_${keyName}`) || globalConfig.comments_per_call);
+
+    results.model = keyModel;
+    results.max_tokens = keyMaxTokens;
+
     try {
-      const comments = await callGroq(keyword, TOPIC, apiKey, model, maxTokens, commentsPerCall);
+      const comments = await callGroq(keyword, TOPIC, apiKey, keyModel, keyMaxTokens, keyCommentsPerCall);
       if (comments && comments.length > 0) {
         const saveResult = await saveToPHP(comments, TOPIC, env);
         totalAdded += comments.length;
@@ -192,7 +263,8 @@ async function processBatch(env, cronInfo = 'unknown') {
           topic: TOPIC,
           keyword,
           key: keyName,
-          model,
+          model: keyModel,
+          max_tokens: keyMaxTokens,
           generated: comments.length,
           saved: saveResult
         });
@@ -207,6 +279,7 @@ async function processBatch(env, cronInfo = 'unknown') {
         topic: TOPIC,
         keyword,
         key: keyName,
+        model: keyModel,
         error: e.message.substring(0, 200)
       });
     }
@@ -218,7 +291,6 @@ async function processBatch(env, cronInfo = 'unknown') {
   await addLog(env, {
     cron: cronInfo,
     status: totalAdded > 0 ? 'success' : 'no_comments',
-    model,
     keywords: selectedKeywords,
     total_added: totalAdded,
     duration_ms: results.duration_ms
@@ -228,7 +300,7 @@ async function processBatch(env, cronInfo = 'unknown') {
 }
 
 // ============================================================
-// ADMIN: LIST KEYS
+// ADMIN: LIST KEYS (Per-key config ke saath)
 // ============================================================
 async function listKeys(env) {
   const keysList = await env.API_DATA.get('keys_list', { type: 'json' }) || [];
@@ -237,11 +309,18 @@ async function listKeys(env) {
     const value = await env.API_DATA.get(`key_value_${keyName}`);
     const isBlocked = await env.API_DATA.get(`blocked_${keyName}`);
     const blockedAt = await env.API_DATA.get(`blocked_at_${keyName}`);
+    const keyModel = await env.API_DATA.get(`key_model_${keyName}`) || null;
+    const keyMaxTokens = await env.API_DATA.get(`key_max_tokens_${keyName}`) || null;
+    const keyCommentsPerCall = await env.API_DATA.get(`key_comments_per_call_${keyName}`) || null;
+
     keys.push({
       name: keyName,
       value: value ? maskKey(value) : null,
       status: isBlocked === 'true' ? 'blocked' : 'active',
-      blocked_at: blockedAt || null
+      blocked_at: blockedAt || null,
+      model: keyModel,
+      max_tokens: keyMaxTokens ? parseInt(keyMaxTokens) : null,
+      comments_per_call: keyCommentsPerCall ? parseInt(keyCommentsPerCall) : null
     });
   }
   return { success: true, total: keys.length, keys };
@@ -280,9 +359,14 @@ async function deleteKey(request, env) {
   let keysList = await env.API_DATA.get('keys_list', { type: 'json' }) || [];
   keysList = keysList.filter(k => k !== name);
   await env.API_DATA.put('keys_list', JSON.stringify(keysList));
+
   await env.API_DATA.delete(`key_value_${name}`);
   await env.API_DATA.delete(`blocked_${name}`);
   await env.API_DATA.delete(`blocked_at_${name}`);
+  await env.API_DATA.delete(`key_model_${name}`);
+  await env.API_DATA.delete(`key_max_tokens_${name}`);
+  await env.API_DATA.delete(`key_comments_per_call_${name}`);
+
   await addLog(env, { status: 'key_deleted', key: name });
   return { success: true, action: 'delete', name };
 }
