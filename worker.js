@@ -5,7 +5,7 @@ const DEFAULT_MODEL = 'openai/gpt-oss-120b';
 const DEFAULT_MAX_TOKENS = 2000;
 const DEFAULT_COMMENTS_PER_CALL = 30;
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const ADMIN_PASSWORD = 'amittg_admin_2024';
+const ADMIN_PASSWORD = 'ak';
 
 const KEYWORDS = [
   'earning apps', 'online earning', 'paise kamane wala app', 'work from home', 'free earning app',
