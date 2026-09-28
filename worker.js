@@ -1,32 +1,51 @@
 export default {
   async fetch(request, env) {
-    const result = await generateEarning(env);
+    const url = new URL(request.url);
+    const topic = url.searchParams.get('topic') || 'earning';
+    
+    const result = await generateComments(topic, env);
     return new Response(JSON.stringify(result, null, 2), {
       headers: { 'Content-Type': 'application/json' }
     });
   }
 };
 
-async function generateEarning(env) {
-  const keywords = [
-    'earning apps',
-    'online earning',
-    'paise kamane wala app',
-    'work from home'
-  ];
+async function generateComments(topic, env) {
+  const keywords = {
+    earning: ['earning apps', 'online earning', 'paise kamane wala app', 'work from home'],
+    banking: ['banking app', 'bank account', 'UPI payment', 'net banking'],
+    winning: ['winning tricks', 'jeetne ka tarika', 'winning strategy', 'game winning tips'],
+    game: ['slots game', 'game tricks', 'gaming tips', 'game winning'],
+    vlog: ['daily vlog', 'vlog video', 'life vlog', 'travel vlog']
+  };
 
-  const apiKey = env.GROQ_EARNING_1;
+  const keyMap = {
+    earning: 'GROQ_EARNING_1',
+    banking: 'GROQ_BANKING_1',
+    winning: 'GROQ_WINNING_1',
+    game: 'GROQ_GAME_1',
+    vlog: 'GROQ_VLOG_1'
+  };
+
+  const topicKeywords = keywords[topic];
+  const keyName = keyMap[topic];
+  const apiKey = env[keyName];
+
+  if (!topicKeywords) {
+    return { error: 'Invalid topic. Use: earning, banking, winning, game, vlog' };
+  }
+
   if (!apiKey) {
-    return { error: 'GROQ_EARNING_1 not set' };
+    return { error: `${keyName} not set in secrets` };
   }
 
   let totalAdded = 0;
   const results = [];
 
-  for (const keyword of keywords) {
+  for (const keyword of topicKeywords) {
     try {
-      const comments = await callGroq(keyword, apiKey);
-      const saveResult = await saveToPHP(comments, env);
+      const comments = await callGroq(keyword, topic, apiKey);
+      const saveResult = await saveToPHP(comments, topic, env);
       totalAdded += comments.length;
       results.push({ keyword, generated: comments.length, saved: saveResult });
     } catch (e) {
@@ -37,19 +56,20 @@ async function generateEarning(env) {
 
   return {
     success: true,
+    topic,
     total_added: totalAdded,
     details: results,
     timestamp: new Date().toISOString()
   };
 }
 
-async function callGroq(keyword, apiKey) {
-  const prompt = `Generate 25 UNIQUE YouTube comments about "${keyword}" in Hinglish (Hindi + English mix).
+async function callGroq(keyword, topic, apiKey) {
+  const prompt = `Generate 25 UNIQUE YouTube comments about "${keyword}" (topic: ${topic}) in Hinglish (Hindi + English mix).
 
 Rules:
 - Each comment 15-25 words
 - Mix styles: praise, thanks, question, feedback
-- Use 1-2 emojis (🔥 💰 👍 💯 ✅)
+- Use 1-2 emojis (🔥 💰 👍 💯 ✅ 🎯 🏦 🎮)
 - Sound like real Indian YouTube user
 - NO repetition
 - Return ONLY a valid JSON array of strings
@@ -65,7 +85,7 @@ Example: ["Bhai video bahut helpful thi 🔥", "Nice explanation, keep it up �
     body: JSON.stringify({
       model: 'llama-3.1-8b-instant',
       messages: [
-        { role: 'system', content: 'Return ONLY valid JSON arrays.' },
+        { role: 'system', content: 'Return ONLY valid JSON arrays. No markdown.' },
         { role: 'user', content: prompt }
       ],
       temperature: 0.95,
@@ -90,11 +110,11 @@ Example: ["Bhai video bahut helpful thi 🔥", "Nice explanation, keep it up �
   return parsed.filter(c => typeof c === 'string' && c.length > 10);
 }
 
-async function saveToPHP(comments, env) {
+async function saveToPHP(comments, topic, env) {
   const formData = new URLSearchParams();
   formData.append('action', 'save');
   formData.append('secret', env.PHP_SECRET);
-  formData.append('topic', 'earning');
+  formData.append('topic', topic);
   formData.append('comments', JSON.stringify(comments));
 
   const response = await fetch(env.PHP_API_URL, {
