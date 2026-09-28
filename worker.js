@@ -6,10 +6,8 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MAX_TOKENS = 3000;
 const COMMENTS_PER_CALL = 30;
 
-const ALL_API_KEYS = [
-  'GROQ_API_1', 'GROQ_API_2', 'GROQ_API_3', 'GROQ_API_4', 'GROQ_API_5',
-  'GROQ_API_6', 'GROQ_API_7', 'GROQ_API_8', 'GROQ_API_9', 'GROQ_API_10'
-];
+// Admin password (isko change karo)
+const ADMIN_PASSWORD = 'amittg_admin_2024';
 
 const KEYWORDS = [
   'earning apps',
@@ -53,102 +51,185 @@ export default {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type'
+          'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Pass'
         }
       });
     }
 
-    if (action === 'reset') {
-      return jsonResponse(await resetFlags(env));
+    // Admin password check (agar admin action hai)
+    const adminActions = ['keys-list', 'key-add', 'key-delete', 'keys-status', 'reset'];
+    if (adminActions.includes(action)) {
+      const pass = url.searchParams.get('pass') || request.headers.get('X-Admin-Pass');
+      if (pass !== ADMIN_PASSWORD) {
+        return jsonResponse({ error: 'Unauthorized' }, 403);
+      }
     }
 
-    if (action === 'keys-status') {
-      return jsonResponse(await getKeysStatus(env));
+    switch (action) {
+      case 'reset':
+        return jsonResponse(await resetFlags(env));
+      case 'keys-status':
+        return jsonResponse(await getKeysStatus(env));
+      case 'keys-list':
+        return jsonResponse(await listKeys(env));
+      case 'key-add':
+        return jsonResponse(await addKey(request, env));
+      case 'key-delete':
+        return jsonResponse(await deleteKey(request, env));
+      case 'status':
+        return jsonResponse(await getStatus(env));
+      default:
+        return jsonResponse(await processBatch(env));
     }
-
-    if (action === 'status') {
-      return jsonResponse(await getStatus(env));
-    }
-
-    return jsonResponse(await processBatch(env));
   }
 };
 
 // ============================================================
-// KEYS STATUS — Kaunsi API Block Hai, Kaunsi Nahi
+// ADMIN: LIST ALL KEYS (Values Ke Saath)
+// ============================================================
+async function listKeys(env) {
+  const keysList = await env.API_DATA.get('keys_list', { type: 'json' }) || [];
+
+  const keys = [];
+  for (const keyName of keysList) {
+    const value = await env.API_DATA.get(`key_value_${keyName}`);
+    const isBlocked = await env.API_DATA.get(`blocked_${keyName}`);
+    const blockedAt = await env.API_DATA.get(`blocked_at_${keyName}`);
+
+    keys.push({
+      name: keyName,
+      value: value ? maskKey(value) : null,
+      full_value: value || null,  // Admin ko dikhane ke liye
+      status: isBlocked === 'true' ? 'blocked' : 'active',
+      blocked_at: blockedAt || null
+    });
+  }
+
+  return {
+    success: true,
+    total: keys.length,
+    keys
+  };
+}
+
+// ============================================================
+// ADMIN: ADD KEY
+// ============================================================
+async function addKey(request, env) {
+  const url = new URL(request.url);
+  const name = url.searchParams.get('name');
+  const value = url.searchParams.get('value');
+
+  if (!name || !value) {
+    return { error: 'name and value required' };
+  }
+
+  if (!name.startsWith('GROQ_API_')) {
+    return { error: 'Name must start with GROQ_API_' };
+  }
+
+  if (!value.startsWith('gsk_')) {
+    return { error: 'Invalid Groq key format' };
+  }
+
+  // Keys list update karo
+  let keysList = await env.API_DATA.get('keys_list', { type: 'json' }) || [];
+  if (!keysList.includes(name)) {
+    keysList.push(name);
+    await env.API_DATA.put('keys_list', JSON.stringify(keysList));
+  }
+
+  // Key value save karo
+  await env.API_DATA.put(`key_value_${name}`, value);
+
+  // Secret bhi set karo (Worker env ke liye)
+  // Note: Secrets runtime mein set nahi ho sakte, sirf dashboard se
+  // Isliye hum KV mein rakh rahe hain
+
+  return {
+    success: true,
+    action: 'add',
+    name,
+    message: 'Key added. Note: Worker restart ke baad KV se load hogi.'
+  };
+}
+
+// ============================================================
+// ADMIN: DELETE KEY
+// ============================================================
+async function deleteKey(request, env) {
+  const url = new URL(request.url);
+  const name = url.searchParams.get('name');
+
+  if (!name) return { error: 'name required' };
+
+  let keysList = await env.API_DATA.get('keys_list', { type: 'json' }) || [];
+  keysList = keysList.filter(k => k !== name);
+  await env.API_DATA.put('keys_list', JSON.stringify(keysList));
+
+  await env.API_DATA.delete(`key_value_${name}`);
+  await env.API_DATA.delete(`blocked_${name}`);
+  await env.API_DATA.delete(`blocked_at_${name}`);
+
+  return { success: true, action: 'delete', name };
+}
+
+// ============================================================
+// KEYS STATUS
 // ============================================================
 async function getKeysStatus(env) {
-  const keys = [];
+  const keysList = await env.API_DATA.get('keys_list', { type: 'json' }) || [];
 
-  for (const keyName of ALL_API_KEYS) {
+  const keys = [];
+  for (const keyName of keysList) {
     const isBlocked = await env.API_DATA.get(`blocked_${keyName}`);
     const blockedAt = await env.API_DATA.get(`blocked_at_${keyName}`);
 
     keys.push({
       name: keyName,
       status: isBlocked === 'true' ? 'blocked' : 'active',
-      blocked_at: blockedAt || null,
-      has_key: !!env[keyName]
+      blocked_at: blockedAt || null
     });
   }
 
-  const total = keys.length;
   const active = keys.filter(k => k.status === 'active').length;
   const blocked = keys.filter(k => k.status === 'blocked').length;
-  const missing = keys.filter(k => !k.has_key).length;
 
   return {
     success: true,
     timestamp: new Date().toISOString(),
-    summary: {
-      total,
-      active,
-      blocked,
-      missing
-    },
+    summary: { total: keys.length, active, blocked },
     keys
   };
 }
 
 // ============================================================
-// FLAG RESET
+// RESET FLAGS
 // ============================================================
 async function resetFlags(env) {
+  const keysList = await env.API_DATA.get('keys_list', { type: 'json' }) || [];
   const deleted = [];
-  for (const keyName of ALL_API_KEYS) {
+
+  for (const keyName of keysList) {
     await env.API_DATA.delete(`blocked_${keyName}`);
     await env.API_DATA.delete(`blocked_at_${keyName}`);
     deleted.push(keyName);
   }
-  console.log(`🔄 Reset at ${new Date().toISOString()}`);
-  return {
-    success: true,
-    action: 'reset',
-    reset: deleted,
-    timestamp: new Date().toISOString()
-  };
+
+  return { success: true, action: 'reset', reset: deleted, timestamp: new Date().toISOString() };
 }
 
 // ============================================================
 // PROCESS BATCH
 // ============================================================
 async function processBatch(env) {
-  const results = {
-    success: true,
-    timestamp: new Date().toISOString(),
-    details: []
-  };
-
+  const results = { success: true, timestamp: new Date().toISOString(), details: [] };
   let totalAdded = 0;
 
   const availableKeys = await getAvailableKeys(env);
 
   if (availableKeys.length === 0) {
-    return {
-      success: false,
-      error: 'All API keys blocked. Reset at midnight.',
-      timestamp: new Date().toISOString()
-    };
+    return { success: false, error: 'All API keys blocked. Reset at midnight.', timestamp: new Date().toISOString() };
   }
 
   const shuffled = [...KEYWORDS].sort(() => Math.random() - 0.5);
@@ -157,47 +238,27 @@ async function processBatch(env) {
   for (let i = 0; i < selectedKeywords.length; i++) {
     const keyword = selectedKeywords[i];
     const keyName = availableKeys[i % availableKeys.length];
-    const apiKey = env[keyName];
 
+    // KV se key value lo
+    const apiKey = await env.API_DATA.get(`key_value_${keyName}`);
     if (!apiKey) continue;
 
     try {
       const comments = await callGroq(keyword, TOPIC, apiKey);
-
       if (comments && comments.length > 0) {
         const saveResult = await saveToPHP(comments, TOPIC, env);
         totalAdded += comments.length;
-
-        results.details.push({
-          topic: TOPIC,
-          keyword,
-          key: keyName,
-          generated: comments.length,
-          saved: saveResult
-        });
+        results.details.push({ topic: TOPIC, keyword, key: keyName, generated: comments.length, saved: saveResult });
       }
     } catch (e) {
       if (e.message.includes('429') || e.message.includes('rate_limit')) {
-        await env.API_DATA.put(`blocked_${keyName}`, 'true', {
-          expirationTtl: 86400
-        });
-        await env.API_DATA.put(`blocked_at_${keyName}`, new Date().toISOString(), {
-          expirationTtl: 86400
-        });
-        console.log(`🚫 Blocked: ${keyName}`);
+        await env.API_DATA.put(`blocked_${keyName}`, 'true', { expirationTtl: 86400 });
+        await env.API_DATA.put(`blocked_at_${keyName}`, new Date().toISOString(), { expirationTtl: 86400 });
       }
-
-      results.details.push({
-        topic: TOPIC,
-        keyword,
-        key: keyName,
-        error: e.message.substring(0, 200)
-      });
+      results.details.push({ topic: TOPIC, keyword, key: keyName, error: e.message.substring(0, 200) });
     }
 
-    if (i < selectedKeywords.length - 1) {
-      await sleep(5000);
-    }
+    if (i < selectedKeywords.length - 1) await sleep(5000);
   }
 
   results.total_added = totalAdded;
@@ -208,13 +269,16 @@ async function processBatch(env) {
 // AVAILABLE KEYS
 // ============================================================
 async function getAvailableKeys(env) {
+  const keysList = await env.API_DATA.get('keys_list', { type: 'json' }) || [];
   const available = [];
-  for (const keyName of ALL_API_KEYS) {
+
+  for (const keyName of keysList) {
     const isBlocked = await env.API_DATA.get(`blocked_${keyName}`);
     if (isBlocked !== 'true') {
       available.push(keyName);
     }
   }
+
   return available;
 }
 
@@ -240,10 +304,7 @@ STRICT RULES:
 
   const response = await fetch(GROQ_URL, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: GROQ_MODEL,
       messages: [
@@ -262,7 +323,6 @@ STRICT RULES:
 
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content || '';
-
   const arrayMatch = content.match(/\[[\s\S]*\]/);
   if (!arrayMatch) throw new Error('No JSON array in response');
 
@@ -287,16 +347,8 @@ async function saveToPHP(comments, topic, env) {
   formData.append('topic', topic);
   formData.append('comments', JSON.stringify(comments));
 
-  const response = await fetch(env.PHP_API_URL, {
-    method: 'POST',
-    body: formData
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`PHP ${response.status}: ${err.substring(0, 200)}`);
-  }
-
+  const response = await fetch(env.PHP_API_URL, { method: 'POST', body: formData });
+  if (!response.ok) throw new Error(`PHP ${response.status}`);
   return await response.json();
 }
 
@@ -305,36 +357,29 @@ async function saveToPHP(comments, topic, env) {
 // ============================================================
 async function getStatus(env) {
   try {
-    const resp = await fetch(
-      `${env.PHP_API_URL}?action=status&secret=${env.PHP_SECRET}`
-    );
+    const resp = await fetch(`${env.PHP_API_URL}?action=status&secret=${env.PHP_SECRET}`);
     const data = await resp.json();
-    return {
-      success: true,
-      php_status: data,
-      timestamp: new Date().toISOString()
-    };
+    return { success: true, php_status: data, timestamp: new Date().toISOString() };
   } catch (e) {
-    return {
-      success: false,
-      error: e.message,
-      timestamp: new Date().toISOString()
-    };
+    return { success: false, error: e.message };
   }
 }
 
 // ============================================================
 // HELPERS
 // ============================================================
-function jsonResponse(data) {
+function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*'
-    }
+    status,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
   });
 }
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function maskKey(key) {
+  if (!key || key.length < 12) return '***';
+  return key.substring(0, 8) + '...' + key.substring(key.length - 4);
 }
